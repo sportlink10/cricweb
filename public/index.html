@@ -1,1 +1,1000 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="referrer" content="no-referrer" />
+  <title>Sportlink · CricketLive</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.4.12/hls.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box }
+    html, body {
+      width: 100%; height: 100%; background: #000;
+      font-family: 'Inter', sans-serif; overflow: hidden
+    }
 
+    /* ── LOAD SCREEN ── */
+    #LS {
+      position: fixed; inset: 0; background: #0a0a0f;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 18px; z-index: 100; overflow-y: auto; padding: 20px
+    }
+    .ls-logo { font-size: 2rem; font-weight: 700; color: #fff; letter-spacing: -.02em }
+    .ls-logo b { color: #1fb8ff }
+    .ls-sub { color: rgba(255,255,255,.32); font-size: .8rem; text-align: center; margin-top: 4px; line-height: 1.6 }
+    .ls-box { width: min(520px, 94vw); display: flex; flex-direction: column; gap: 12px }
+
+    /* ── CHANNEL GRID ── */
+    .ch-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+      gap: 10px;
+      max-height: 62vh;
+      overflow-y: auto;
+      padding: 4px 2px
+    }
+    .ch-grid::-webkit-scrollbar { width: 4px }
+    .ch-grid::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius: 2px }
+    .ch-card {
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+      padding: 12px 8px; border-radius: 10px;
+      border: 1px solid rgba(255,255,255,.1);
+      background: rgba(255,255,255,.04);
+      cursor: pointer; transition: all .15s; text-align: center
+    }
+    .ch-card:hover { background: rgba(31,184,255,.1); border-color: rgba(31,184,255,.3) }
+    .ch-card.sel { background: rgba(31,184,255,.15); border-color: rgba(31,184,255,.5);
+      box-shadow: 0 0 0 2px rgba(31,184,255,.2) }
+    .ch-logo { width: 52px; height: 52px; border-radius: 8px; object-fit: cover; background: #1a1a1a }
+    .ch-name { font-size: .72rem; color: rgba(255,255,255,.75); line-height: 1.3; word-break: break-word }
+    .ch-card.sel .ch-name { color: #1fb8ff }
+    .ch-tag { font-size: .6rem; color: rgba(255,255,255,.3); background: rgba(255,255,255,.06);
+      padding: 2px 6px; border-radius: 4px }
+    .ch-loading { display: flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 32px; color: rgba(255,255,255,.3); font-size: .85rem }
+    .ch-err { color: rgba(255,100,100,.7); font-size: .8rem; text-align: center; padding: 18px }
+    .ch-err a { color: #1fb8ff; cursor: pointer }
+    .mini-spin {
+      width: 18px; height: 18px; border: 2px solid rgba(255,255,255,.1);
+      border-top-color: #1fb8ff; border-radius: 50%;
+      animation: spin .7s linear infinite; flex-shrink: 0
+    }
+    @keyframes spin { to { transform: rotate(360deg) } }
+    .updated-badge { font-size: .7rem; color: rgba(255,255,255,.25); text-align: center }
+    .updated-badge b { color: rgba(31,184,255,.7) }
+    .ls-play {
+      background: #fff; color: #000; border: none; border-radius: 10px;
+      padding: 13px; font-size: .92rem; font-weight: 700; cursor: pointer;
+      font-family: 'Inter', sans-serif; transition: opacity .2s
+    }
+    .ls-play:hover { opacity: .88 }
+    .ls-play:disabled { opacity: .35; cursor: not-allowed }
+
+    /* ── PLAYER ── */
+    #player {
+      position: relative; width: 100vw; height: 100vh;
+      background: #000; overflow: hidden; cursor: none
+    }
+    #player.show-ui { cursor: default }
+    #video { width: 100%; height: 100%; object-fit: contain; display: block }
+    #video.rot-90, #video.rot-270 {
+      position: absolute; top: 50%; left: 50%;
+      width: 100vh; height: 100vw; max-width: none; max-height: none
+    }
+    #video.rot-90 { transform: translate(-50%,-50%) rotate(90deg) }
+    #video.rot-270 { transform: translate(-50%,-50%) rotate(270deg) }
+    #video.rot-180 { transform: rotate(180deg) }
+    #clickZone { position: absolute; inset: 0; z-index: 2; cursor: pointer }
+
+    /* ── TOP BAR ── */
+    #topBar {
+      position: absolute; top: 0; left: 0; right: 0; height: 70px;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 20px; z-index: 10;
+      background: linear-gradient(to bottom, rgba(0,0,0,.85), transparent);
+      transition: opacity .3s
+    }
+    .top-L { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1 }
+    #backBtn {
+      background: none; border: none; color: #fff; cursor: pointer;
+      padding: 6px; display: flex; align-items: center; justify-content: center;
+      border-radius: 50%; transition: background .15s; flex-shrink: 0
+    }
+    #backBtn:hover { background: rgba(255,255,255,.12) }
+    #vidTitle {
+      font-size: .95rem; font-weight: 600; color: #fff;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 280px
+    }
+    .top-R { display: flex; align-items: center; gap: 4px; flex-shrink: 0 }
+
+    /* ── BOTTOM ── */
+    #bottomArea {
+      position: absolute; bottom: 0; left: 0; right: 0; z-index: 10;
+      background: linear-gradient(to top, rgba(0,0,0,.9) 0%, rgba(0,0,0,.4) 65%, transparent 100%);
+      padding: 0 0 8px; transition: opacity .3s
+    }
+    #progWrap { padding: 12px 0 5px; cursor: pointer; position: relative; margin: 0 20px }
+    #progTrack { position: relative; height: 3px; background: rgba(255,255,255,.2); border-radius: 2px; transition: height .15s }
+    #progWrap:hover #progTrack { height: 4px }
+    #progBuf { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(255,255,255,.3); border-radius: 2px; width: 0 }
+    #progFill { position: absolute; left: 0; top: 0; bottom: 0; background: #fff; border-radius: 2px; width: 0 }
+    #progFill.live-fill { background: linear-gradient(90deg, #ff4444, #ff6b6b) }
+    #progThumb {
+      position: absolute; top: 50%; width: 13px; height: 13px; background: #fff;
+      border-radius: 50%; transform: translate(-50%,-50%) scale(0);
+      transition: transform .15s; pointer-events: none; box-shadow: 0 0 5px rgba(0,0,0,.6)
+    }
+    #progWrap:hover #progThumb { transform: translate(-50%,-50%) scale(1) }
+    #progTip {
+      position: absolute; bottom: 14px; transform: translateX(-50%);
+      background: rgba(20,20,20,.9); color: #fff; font-size: .7rem; font-weight: 600;
+      padding: 3px 8px; border-radius: 4px; pointer-events: none; white-space: nowrap; opacity: 0
+    }
+    #progWrap:hover #progTip { opacity: 1 }
+    #btmRow { display: flex; align-items: center; justify-content: space-between; padding: 2px 16px 4px }
+    .bL, .bC, .bR { display: flex; align-items: center; gap: 2px }
+    .ibtn {
+      background: none; border: none; color: #fff; cursor: pointer;
+      width: 44px; height: 44px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      transition: background .15s; flex-shrink: 0
+    }
+    .ibtn:hover { background: rgba(255,255,255,.1) }
+    .skip-btn {
+      display: flex; align-items: center; gap: 3px; background: none; border: none;
+      color: #fff; cursor: pointer; padding: 8px; border-radius: 8px;
+      font-size: .83rem; font-weight: 700; font-family: 'Inter', sans-serif; transition: background .15s
+    }
+    .skip-btn:hover { background: rgba(255,255,255,.1) }
+    .skip-btn svg { width: 19px; height: 19px; fill: #fff }
+    #timeLbl { font-size: .82rem; color: rgba(255,255,255,.9); white-space: nowrap; padding: 0 6px; letter-spacing: .02em }
+    #liveBadge {
+      display: none; align-items: center; gap: 6px; padding: 5px 12px;
+      border-radius: 20px; font-size: .76rem; font-weight: 700; font-family: 'Inter', sans-serif;
+      cursor: pointer; transition: all .2s; border: none; letter-spacing: .04em
+    }
+    #liveBadge.at-live { background: #e53e3e; color: #fff; animation: livePulse 2s infinite }
+    #liveBadge.at-live:hover { background: #c53030 }
+    #liveBadge.behind-live {
+      background: rgba(255,255,255,.1); color: rgba(255,255,255,.7);
+      border: 1px solid rgba(255,255,255,.18)
+    }
+    @keyframes livePulse {
+      0% { box-shadow: 0 0 0 0 rgba(229,62,62,.5) }
+      70% { box-shadow: 0 0 0 8px rgba(229,62,62,0) }
+      100% { box-shadow: 0 0 0 0 rgba(229,62,62,0) }
+    }
+    .live-dot { width: 7px; height: 7px; border-radius: 50%; background: #fff; animation: dotBlink 1.2s ease-in-out infinite; flex-shrink: 0 }
+    #liveBadge.behind-live .live-dot { background: #ff6b6b; animation: none }
+    @keyframes dotBlink { 0%,100% { opacity: 1 } 50% { opacity: .3 } }
+    #delayLbl { display: none; font-size: .72rem; font-weight: 600; color: rgba(255,150,150,.9); padding: 0 4px; white-space: nowrap }
+    .vol-row { display: flex; align-items: center; gap: 2px }
+    .vol-slide-wrap { width: 0; overflow: hidden; transition: width .25s }
+    .vol-row:hover .vol-slide-wrap, .vol-row:focus-within .vol-slide-wrap { width: 76px }
+    #volSlider {
+      -webkit-appearance: none; appearance: none; width: 76px; height: 3px;
+      background: rgba(255,255,255,.3); border-radius: 2px; outline: none; cursor: pointer; margin-left: 4px
+    }
+    #volSlider::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: #fff; cursor: pointer }
+
+    /* ── FLOATING QUICK CONTROLS ── */
+    #floatCtrls {
+      position: absolute; right: 18px;
+      bottom: calc(104px + env(safe-area-inset-bottom, 0px));
+      z-index: 15; display: flex; flex-direction: column; gap: 10px;
+      transition: opacity .3s; pointer-events: auto
+    }
+    .fbtn {
+      width: 44px; height: 44px; border-radius: 50%;
+      background: rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.18);
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      box-shadow: 0 2px 10px rgba(0,0,0,.45)
+    }
+    .fbtn:hover { background: rgba(255,255,255,.2) }
+    #rotBtn.on { color: #1fb8ff; background: rgba(31,184,255,.22); border-color: rgba(31,184,255,.55) }
+    #player.hide-ui #floatCtrls { opacity: .55 }
+    @media(max-width:640px) {
+      #floatCtrls { right: 12px; bottom: calc(92px + env(safe-area-inset-bottom, 0px)); gap: 10px }
+      .fbtn { width: 50px; height: 50px }
+      .fbtn svg { width: 24px; height: 24px }
+    }
+
+    /* ── SPINNER / TOAST / ERROR ── */
+    #spinWrap { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 8; pointer-events: none }
+    #spin {
+      width: 50px; height: 50px; border: 3px solid rgba(255,255,255,.12);
+      border-top: 3px solid #fff; border-radius: 50%;
+      animation: spin .75s linear infinite; display: none
+    }
+    #spin.on { display: block }
+    #cAnim { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); pointer-events: none; opacity: 0; z-index: 9 }
+    #cAnim.pop { animation: cpop .55s ease forwards }
+    @keyframes cpop {
+      0% { opacity: 1; transform: translate(-50%,-50%) scale(.5) }
+      55% { opacity: 1; transform: translate(-50%,-50%) scale(1.15) }
+      100% { opacity: 0; transform: translate(-50%,-50%) scale(1.4) }
+    }
+    #cAnim svg { width: 68px; height: 68px; fill: rgba(255,255,255,.85) }
+    .sflash { position: absolute; top: 50%; transform: translateY(-50%); pointer-events: none; opacity: 0; display: flex; flex-direction: column; align-items: center; gap: 5px; z-index: 9 }
+    #sfl { left: 80px }
+    #sfr { right: 80px }
+    .sflash.pop { animation: cpop .55s ease forwards }
+    .sflash svg { width: 44px; height: 44px; fill: rgba(255,255,255,.85) }
+    .sflash span { font-size: .7rem; font-weight: 700; color: #fff; background: rgba(0,0,0,.45); padding: 2px 8px; border-radius: 10px }
+    .hide-ui #topBar, .hide-ui #bottomArea { opacity: 0; pointer-events: none }
+    #toast {
+      position: absolute; bottom: 92px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,.72); color: #fff; font-size: .78rem; font-weight: 500;
+      padding: 5px 14px; border-radius: 20px; z-index: 20; pointer-events: none;
+      opacity: 0; transition: opacity .2s; white-space: nowrap
+    }
+    #toast.on { opacity: 1 }
+    #err {
+      position: absolute; inset: 0; display: none; flex-direction: column;
+      align-items: center; justify-content: center; gap: 10px; z-index: 9;
+      color: #fff; padding: 20px; text-align: center
+    }
+    #err h3 { font-size: 1rem }
+    #errMsg { font-size: .82rem; color: rgba(255,255,255,.5); max-width: 420px; line-height: 1.5 }
+    #errRetry {
+      background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.15);
+      color: #fff; padding: 8px 18px; border-radius: 8px; font-size: .8rem;
+      cursor: pointer; font-family: 'Inter', sans-serif; margin-top: 4px; transition: background .15s
+    }
+    #errRetry:hover { background: rgba(255,255,255,.18) }
+
+    /* ── PAUSE INFO OVERLAY ── */
+    #pauseInfo {
+      position: absolute; inset: 0; z-index: 6; display: none; flex-direction: column;
+      justify-content: center; padding: 0 8vw; pointer-events: none;
+      background: linear-gradient(90deg, rgba(0,0,0,.88) 0%, rgba(0,0,0,.6) 45%, rgba(0,0,0,.15) 100%)
+    }
+    #pauseInfo.on { display: flex; animation: piFade .45s ease }
+    @keyframes piFade { from { opacity: 0; transform: translateY(12px) } to { opacity: 1; transform: none } }
+    #piKicker { font-size: .78rem; font-weight: 700; letter-spacing: .22em; text-transform: uppercase; color: rgba(255,255,255,.55); margin-bottom: 10px }
+    #piTitle { font-size: clamp(1.8rem, 4.6vw, 3.6rem); font-weight: 700; color: #fff; line-height: 1.05; letter-spacing: -.02em; max-width: 62%; text-shadow: 0 2px 18px rgba(0,0,0,.6) }
+    #piMeta { display: flex; align-items: center; gap: 12px; margin-top: 16px; flex-wrap: wrap }
+    .pi-badge { font-size: .74rem; font-weight: 700; color: #fff; border: 1.5px solid rgba(255,255,255,.5); border-radius: 4px; padding: 2px 8px; letter-spacing: .03em }
+    .pi-dot { width: 4px; height: 4px; border-radius: 50%; background: rgba(255,255,255,.4) }
+    .pi-chip { font-size: .9rem; font-weight: 600; color: rgba(255,255,255,.85) }
+    #piHint { margin-top: 22px; font-size: .8rem; color: rgba(255,255,255,.4); display: flex; align-items: center; gap: 8px }
+    #piHint svg { width: 26px; height: 26px; fill: rgba(255,255,255,.55) }
+    @media(max-width:640px) {
+      #pauseInfo { padding: 0 6vw; background: linear-gradient(0deg, rgba(0,0,0,.9), rgba(0,0,0,.4)) }
+      #piTitle { max-width: 100% }
+    }
+
+    /* ── SMALL DEVICE ── */
+    @media(max-width:640px) {
+      #topBar { height: 55px; padding: 0 10px }
+      #vidTitle { max-width: 160px; font-size: .85rem }
+      #delayLbl { display: none !important }
+      #bottomArea { padding-bottom: 4px }
+      #progWrap { margin: 0 10px; padding: 8px 0 4px }
+      #btmRow { padding: 0 8px 2px }
+      .ibtn { width: 36px; height: 36px }
+      .skip-btn { font-size: .72rem; padding: 4px }
+      .skip-btn svg { width: 15px; height: 19px }
+      #playBtn svg { width: 24px; height: 24px }
+      #timeLbl { font-size: .72rem; padding: 0 2px }
+      .vol-row { display: none !important }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ══════════ LOAD SCREEN ══════════ -->
+  <div id="LS">
+    <div style="text-align:center">
+      <div class="ls-logo">Sport<b>link</b></div>
+      <div class="ls-sub">CricketLive · live sports events<br>Streams from the official CricketLive playlist.</div>
+    </div>
+    <div class="ls-box">
+      <div id="chLoading" class="ch-loading">
+        <div class="mini-spin"></div>Loading CricketLive channels…
+      </div>
+      <div id="chErr" class="ch-err" style="display:none">
+        ⚠ Failed to load the playlist. <a onclick="fetchPlaylist();return false">Retry</a>
+      </div>
+      <div id="chGrid" class="ch-grid" style="display:none"></div>
+      <div id="chUpdated" class="updated-badge" style="display:none"></div>
+      <button class="ls-play" id="playBtn" style="display:none;opacity:.4;cursor:not-allowed" onclick="playSelected()">
+        ▶ Play selected channel
+      </button>
+    </div>
+  </div>
+
+  <!-- ══════════ PLAYER ══════════ -->
+  <div id="player" class="show-ui">
+    <video id="video" preload="metadata" playsinline></video>
+    <div id="clickZone"></div>
+
+    <!-- Pause info overlay -->
+    <div id="pauseInfo">
+      <div id="piKicker">You're watching</div>
+      <div id="piTitle"></div>
+      <div id="piMeta">
+        <span class="pi-badge" id="piRating" style="display:none"></span>
+        <span class="pi-chip" id="piYear" style="display:none"></span>
+        <span class="pi-dot" id="piDot1" style="display:none"></span>
+        <span class="pi-chip" id="piDur" style="display:none"></span>
+      </div>
+      <div id="piHint">
+        <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+        Tap to resume
+      </div>
+    </div>
+
+    <!-- Skip animations -->
+    <div class="sflash" id="sfl"><svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg><span>-10s</span></div>
+    <div class="sflash" id="sfr"><svg viewBox="0 0 24 24"><path d="M18 6h-2v12h2zm-3.5 6L6 6v12z"/></svg><span>+10s</span></div>
+    <div id="cAnim"><svg id="cSvg" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>
+    <div id="spinWrap"><div id="spin"></div></div>
+    <div id="err">
+      <h3>Playback Error</h3>
+      <p id="errMsg">Could not play this stream.</p>
+      <button id="errRetry" onclick="retryLast()">↺ Retry</button>
+    </div>
+    <div id="toast"></div>
+
+    <!-- Top bar -->
+    <div id="topBar">
+      <div class="top-L">
+        <button id="backBtn" onclick="goBack()">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="#fff">
+            <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+          </svg>
+        </button>
+        <div id="vidTitle"></div>
+      </div>
+      <div class="top-R"></div>
+    </div>
+
+    <!-- Bottom bar -->
+    <div id="bottomArea">
+      <div id="progWrap">
+        <div id="progTrack">
+          <div id="progBuf"></div>
+          <div id="progFill"></div>
+          <div id="progThumb"></div>
+        </div>
+        <div id="progTip">0:00</div>
+      </div>
+      <div id="btmRow">
+        <div class="bL">
+          <button class="skip-btn" id="rwBtn"><svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>10</button>
+          <button class="ibtn" id="playToggleBtn">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="#fff"><path id="pPath" d="M8 5v14l11-7z"/></svg>
+          </button>
+          <button class="skip-btn" id="fwBtn">10<svg viewBox="0 0 24 24"><path d="M18 6h-2v12h2zm-3.5 6L6 6v12z"/></svg></button>
+          <div class="vol-row">
+            <button class="ibtn" id="muteBtn">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="#fff">
+                <path id="vPath" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+              </svg>
+            </button>
+            <div class="vol-slide-wrap"><input type="range" id="volSlider" min="0" max="100" value="100"/></div>
+          </div>
+          <span id="timeLbl">LIVE</span>
+          <span id="delayLbl"></span>
+        </div>
+        <div class="bC">
+          <button id="liveBadge" onclick="jumpToLive()"><span class="live-dot"></span><span id="liveBadgeTxt">LIVE</span></button>
+        </div>
+        <div class="bR"></div>
+      </div>
+    </div>
+
+    <!-- Floating quick controls -->
+    <div id="floatCtrls">
+      <button class="ibtn fbtn" id="rotBtn" title="Rotate screen">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="#fff">
+          <path d="M16.48 2.52c3.27 1.55 5.61 4.72 5.97 8.48h1.5C23.44 4.84 18.29 0 12 0l-.66.03 3.81 3.81 1.33-1.32zm-6.25-.77a1.996 1.996 0 0 0-2.73 0L2.24 6.99a1.996 1.996 0 0 0 0 2.73l10.26 10.26c.75.75 1.97.75 2.73 0l5.25-5.25c.75-.75.75-1.97 0-2.73L10.23 1.75zm-1.3 1.41c.11-.11.3-.11.41 0l10.26 10.26c.11.11.11.3 0 .41l-5.25 5.25c-.11.11-.3.11-.41 0L3.68 8.82c-.11-.11-.11-.3 0-.41l5.25-5.25zM7.52 21.48C4.25 19.94 1.91 16.76 1.55 13H.05C.56 19.16 5.71 24 12 24l.66-.03-3.81-3.81-1.33 1.32z"/>
+        </svg>
+      </button>
+      <button class="ibtn fbtn" id="fsBtn" title="Fullscreen">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="#fff">
+          <path id="fsPath" d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <script>
+    // ══════════════════════════════════════════════════════════
+    // ANTI-INSPECT
+    // ══════════════════════════════════════════════════════════
+    (function () {
+      const isLocal = ['localhost','127.0.0.1'].includes(location.hostname) || ['8080','5173'].includes(location.port);
+      const isFramed = window.self !== window.top;
+      const isMobile = window.innerWidth <= 768;
+      if (isLocal || isFramed || isMobile) return;
+      document.addEventListener('contextmenu', e => e.preventDefault());
+      document.addEventListener('keydown', function (e) {
+        const k = e.key.toUpperCase();
+        if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && ['I','J','C','U','K'].includes(k)) ||
+            (e.ctrlKey && k === 'U') || (e.metaKey && e.altKey && ['I','J','C'].includes(k))) {
+          e.preventDefault(); e.stopPropagation(); return false;
+        }
+      }, true);
+    })();
+
+    // ══════════════════════════════════════════════════════════
+    // PLAYLIST + PROXY CONFIG
+    // ══════════════════════════════════════════════════════════
+    const PLAYLIST_URL = 'https://raw.githubusercontent.com/srhady/CricketLive/refs/heads/main/playlist.m3u';
+
+    /* The proxy is a Pages Function in the same project, served at
+       /api/live-proxy on the same origin as this page. Nothing to configure
+       and no CORS, because the browser treats it as same-origin. */
+    const IN_PROXY = '/api/live-proxy';
+
+    /* Builds the proxied URL for one playlist entry, forwarding the
+       referrer / user-agent the playlist may carry. */
+    function viaProxy(base, url, { referrer = '', userAgent = '' } = {}) {
+      return base + '?url=' + encodeURIComponent(url)
+        + (referrer ? '&ref=' + encodeURIComponent(referrer) : '')
+        + (userAgent ? '&ua=' + encodeURIComponent(userAgent) : '');
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // DOM REFS
+    // ══════════════════════════════════════════════════════════
+    const $ = id => document.getElementById(id);
+    const vid = $('video'), player = $('player'), clickZone = $('clickZone');
+    const playToggleBtn = $('playToggleBtn'), pPath = $('pPath');
+    const muteBtn = $('muteBtn'), vPath = $('vPath'), volSlider = $('volSlider');
+    const rwBtn = $('rwBtn'), fwBtn = $('fwBtn');
+    const progWrap = $('progWrap'), progTrack = $('progTrack'), progFill = $('progFill');
+    const progBuf = $('progBuf'), progThumb = $('progThumb'), progTip = $('progTip');
+    const timeLbl = $('timeLbl'), delayLbl = $('delayLbl');
+    const liveBadge = $('liveBadge'), liveBadgeTxt = $('liveBadgeTxt');
+    const fsBtn = $('fsBtn'), fsPath = $('fsPath'), rotBtn = $('rotBtn');
+    const spin = $('spin'), cAnim = $('cAnim'), cSvg = $('cSvg');
+    const sfl = $('sfl'), sfr = $('sfr'), toast = $('toast');
+    const err = $('err'), errMsg = $('errMsg');
+    const LS = $('LS'), vidTitle = $('vidTitle');
+    const pauseInfo = $('pauseInfo');
+
+    const P = {
+      play: 'M8 5v14l11-7z',
+      pause: 'M6 19h4V5H6v14zm8-14v14h4V5h-4z',
+      von: 'M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z',
+      voff: 'M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z',
+      fson: 'M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z',
+      fsoff: 'M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z',
+    };
+
+    let hlsInst = null;
+    let hideT = null, drag = false, toastT = null;
+    let isLiveStream = false;
+    let _edgeCache = 0, _edgeTS = 0, _jumping = false;
+    const LIVE_THRESH = 12, DELAY_SHOW = 6;
+    let _lastUrl = null, _lastTitle = null, _lastReferrer = '', _lastUserAgent = '';
+
+    function fmt(s) {
+      if (!s || isNaN(s)) return '0:00';
+      const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sc = Math.floor(s%60);
+      return h ? `${h}:${pad(m)}:${pad(sc)}` : `${m}:${pad(sc)}`;
+    }
+    function pad(n) { return String(n).padStart(2, '0') }
+    function showToast(msg, dur = 1800) {
+      toast.textContent = msg; toast.classList.add('on');
+      clearTimeout(toastT); toastT = setTimeout(() => toast.classList.remove('on'), dur);
+    }
+    function pop(el) { el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop') }
+
+    // ══════════════════════════════════════════════════════════
+    // PLAYLIST PARSER
+    // ══════════════════════════════════════════════════════════
+    function parsePlaylist(text) {
+      const out = [];
+      const lines = text.split(/\r?\n/);
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line.startsWith('#EXTINF')) continue;
+
+        const attr = (k) => (new RegExp(k + '="([^"]*)"').exec(line) || [, ''])[1];
+        const lastQuote = line.lastIndexOf('"');
+        const nameComma = line.indexOf(',', lastQuote > -1 ? lastQuote : line.indexOf(':'));
+        const name = (nameComma > -1 ? line.slice(nameComma + 1) : '').trim();
+        if (!name) continue;
+
+        const logo = attr('tvg-logo');
+        const group = attr('group-title') || 'Live';
+
+        let referrer = '';
+        let userAgent = '';
+        let url = '';
+
+        for (let j = i + 1; j < lines.length; j++) {
+          const n = lines[j].trim();
+          if (!n) continue;
+
+          if (n.startsWith('#EXTVLCOPT:http-referrer=')) {
+            referrer = n.slice('#EXTVLCOPT:http-referrer='.length).trim();
+          } else if (n.startsWith('#EXTVLCOPT:http-user-agent=')) {
+            userAgent = n.slice('#EXTVLCOPT:http-user-agent='.length).trim();
+          } else if (/^https?:\/\//i.test(n)) {
+            url = n; i = j; break;
+          }
+        }
+
+        if (!url) continue;
+        out.push({ name, url, logo, group, referrer, userAgent });
+      }
+      return out;
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // CHANNEL GRID
+    // ══════════════════════════════════════════════════════════
+    let channels = [], selectedIdx = -1, loaded = false;
+
+    async function fetchPlaylist() {
+      $('chLoading').style.display = 'flex';
+      $('chErr').style.display = 'none';
+      $('chGrid').style.display = 'none';
+      $('chUpdated').style.display = 'none';
+      $('playBtn').style.display = 'none';
+
+      try {
+        const r = await fetch(PLAYLIST_URL + '?_=' + Date.now());
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const text = await r.text();
+        channels = parsePlaylist(text);
+        if (!channels.length) throw new Error('No channels found');
+
+        loaded = true;
+        $('chLoading').style.display = 'none';
+        renderGrid();
+      } catch (e) {
+        $('chLoading').style.display = 'none';
+        $('chErr').style.display = 'block';
+        console.error('Playlist fetch failed:', e);
+      }
+    }
+
+    function renderGrid() {
+      const grid = $('chGrid');
+      grid.innerHTML = '';
+      channels.forEach((ch, i) => {
+        const card = document.createElement('div');
+        card.className = 'ch-card';
+        card.innerHTML = `
+          <img class="ch-logo" src="${ch.logo || ''}" alt="${ch.name}"
+            onerror="this.style.display='none'">
+          <span class="ch-name">${ch.name}</span>
+          <span class="ch-tag">${ch.group}</span>`;
+        card.onclick = () => { selectChannel(i); playSelected(); };
+        grid.appendChild(card);
+      });
+      grid.style.display = 'grid';
+      $('chUpdated').innerHTML = `📡 <b>${channels.length}</b> channels from CricketLive`;
+      $('chUpdated').style.display = 'block';
+      $('playBtn').style.display = 'block';
+    }
+
+    function selectChannel(idx) {
+      document.querySelectorAll('.ch-card').forEach((c, i) => c.classList.toggle('sel', i === idx));
+      selectedIdx = idx;
+      const btn = $('playBtn');
+      btn.style.opacity = '1';
+      btn.style.cursor = 'pointer';
+      btn.textContent = '▶  Play: ' + channels[idx].name;
+    }
+
+    function playSelected() {
+      if (selectedIdx < 0) { showToast('Select a channel first'); return; }
+      const ch = channels[selectedIdx];
+      loadVideo(ch.url, ch.name, ch.referrer, ch.userAgent);
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // LOAD VIDEO
+    // ══════════════════════════════════════════════════════════
+    function loadVideo(url, title, referrer, userAgent) {
+      err.style.display = 'none';
+      errMsg.textContent = 'Could not play this stream.';
+      isLiveStream = false;
+      liveBadge.style.display = 'none';
+      delayLbl.style.display = 'none';
+      progFill.classList.remove('live-fill');
+
+      destroyPlayers();
+
+      _lastUrl = url;
+      _lastTitle = title;
+      _lastReferrer = referrer || '';
+      _lastUserAgent = userAgent || '';
+
+      vidTitle.textContent = title || 'Now Playing';
+
+      LS.style.display = 'none';
+      spin.classList.add('on');
+
+      const target = viaProxy(IN_PROXY, url, {
+        referrer: _lastReferrer,
+        userAgent: _lastUserAgent,
+      });
+
+      loadHLS(target);
+    }
+
+    function retryLast() {
+      if (!_lastUrl) return;
+      err.style.display = 'none';
+      loadVideo(_lastUrl, _lastTitle, _lastReferrer, _lastUserAgent);
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // DESTROY
+    // ══════════════════════════════════════════════════════════
+    function destroyPlayers() {
+      _edgeCache = 0; _edgeTS = 0; _jumping = false;
+      if (hlsInst) { hlsInst.destroy(); hlsInst = null; }
+      vid.pause();
+      vid.removeAttribute('src');
+      vid.load();
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // HLS
+    // ══════════════════════════════════════════════════════════
+    function loadHLS(url) {
+      if (Hls.isSupported()) {
+        hlsInst = new Hls({
+          enableWorker: true,
+          lowLatencyMode: true,
+          liveSyncDurationCount: 3,
+          liveMaxLatencyDurationCount: 10,
+          maxBufferLength: 30,
+          backBufferLength: 60,
+        });
+
+        hlsInst.loadSource(url);
+        hlsInst.attachMedia(vid);
+
+        hlsInst.on(Hls.Events.MANIFEST_PARSED, () => {
+          spin.classList.remove('on');
+          vid.play().catch(() => {});
+          setTimeout(() => {
+            isLiveStream = detectLive();
+            if (isLiveStream) {
+              const e = getLiveEdge();
+              if (e > 0) vid.currentTime = Math.max(0, e - 1);
+              updateLiveBadge();
+              showToast('🔴 Live stream');
+            }
+          }, 800);
+        });
+
+        hlsInst.on(Hls.Events.LEVEL_LOADED, (_, d) => {
+          if (d.details && d.details.live) { isLiveStream = true; updateLiveBadge(); }
+        });
+
+        hlsInst.on(Hls.Events.ERROR, (_, d) => {
+          if (d.fatal) {
+            spin.classList.remove('on');
+            errMsg.textContent = 'HLS error: ' + d.type + (d.details ? ' (' + d.details + ')' : '');
+            err.style.display = 'flex';
+          }
+        });
+      } else if (vid.canPlayType('application/vnd.apple.mpegurl')) {
+        vid.src = url;
+        vid.addEventListener('loadedmetadata', () => {
+          spin.classList.remove('on');
+          isLiveStream = detectLive();
+          if (isLiveStream) {
+            const e = getLiveEdge();
+            if (e > 0) vid.currentTime = Math.max(0, e - 1);
+            updateLiveBadge();
+          }
+        }, { once: true });
+        vid.addEventListener('error', () => { spin.classList.remove('on'); }, { once: true });
+        vid.play().catch(() => {});
+      } else {
+        spin.classList.remove('on');
+        errMsg.textContent = 'HLS is not supported in this browser.';
+        err.style.display = 'flex';
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // LIVE HELPERS
+    // ══════════════════════════════════════════════════════════
+    function detectLive() {
+      if (hlsInst) return hlsInst.levels && hlsInst.levels.length > 0 && vid.duration === Infinity;
+      return vid.duration === Infinity || vid.duration > 86400;
+    }
+
+    function getLiveEdge() {
+      if (hlsInst && hlsInst.liveSyncPosition) return hlsInst.liveSyncPosition;
+      const sk = vid.seekable;
+      if (sk && sk.length > 0) return sk.end(sk.length - 1);
+      return vid.duration || 0;
+    }
+
+    function getLiveDelay() {
+      const e = getLiveEdge();
+      return e ? Math.max(0, e - vid.currentTime) : 0;
+    }
+
+    function jumpToLive() {
+      if (!isLiveStream || _jumping) return;
+      _jumping = true;
+      const edge = getLiveEdge();
+      if (edge > 2) vid.currentTime = edge - 1;
+      vid.playbackRate = 1;
+      if (vid.paused) vid.play().catch(() => {});
+      showToast('▶ Jumped to live');
+      setTimeout(() => { _jumping = false; updateLiveBadge(); }, 1200);
+    }
+
+    function updateLiveBadge() {
+      if (!isLiveStream) {
+        liveBadge.style.display = 'none';
+        delayLbl.style.display = 'none';
+        progFill.classList.remove('live-fill');
+        return;
+      }
+      liveBadge.style.display = 'flex';
+      progFill.classList.add('live-fill');
+      if (_jumping) return;
+      const delay = getLiveDelay(), atLive = delay <= LIVE_THRESH;
+      liveBadge.className = atLive ? 'at-live' : 'behind-live';
+      liveBadgeTxt.textContent = atLive ? 'LIVE' : '● GO LIVE';
+      if (!atLive && delay > DELAY_SHOW) {
+        delayLbl.style.display = 'inline';
+        delayLbl.textContent = `-${Math.min(Math.round(delay), 999)}s`;
+      } else {
+        delayLbl.style.display = 'none';
+      }
+    }
+
+    function updateLiveProgress() {
+      if (!isLiveStream || drag) return;
+      const sk = vid.seekable;
+      const dvr = sk && sk.length > 0 ? sk.end(0) - sk.start(0) : 0;
+      if (dvr <= 0 || dvr > 86400) {
+        progFill.style.width = '100%';
+        progThumb.style.left = '100%';
+        timeLbl.textContent = 'LIVE';
+        return;
+      }
+      const pos = Math.max(0, vid.currentTime - sk.start(0));
+      const pct = Math.min(1, pos / dvr);
+      progFill.style.width = (pct * 100) + '%';
+      progThumb.style.left = (pct * 100) + '%';
+      const delay = getLiveDelay();
+      timeLbl.textContent = delay <= LIVE_THRESH ? 'LIVE' : `-${Math.min(Math.round(delay), 999)}s`;
+      if (vid.buffered.length > 0) {
+        const b = vid.buffered.end(vid.buffered.length - 1) - sk.start(0);
+        progBuf.style.width = Math.min(1, Math.max(0, b / dvr)) * 100 + '%';
+      }
+      updateLiveBadge();
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // PLAYBACK CONTROLS
+    // ══════════════════════════════════════════════════════════
+    function togglePlay() {
+      if (vid.paused) vid.play().catch(() => {});
+      else vid.pause();
+    }
+    clickZone.addEventListener('click', togglePlay);
+    playToggleBtn.addEventListener('click', e => { e.stopPropagation(); togglePlay(); });
+
+    vid.addEventListener('play', () => {
+      pPath.setAttribute('d', P.pause);
+      cSvg.querySelector('path').setAttribute('d', P.pause);
+      pop(cAnim);
+      pauseInfo.classList.remove('on');
+      schedHide();
+    });
+    vid.addEventListener('pause', () => {
+      pPath.setAttribute('d', P.play);
+      cSvg.querySelector('path').setAttribute('d', P.play);
+      pop(cAnim);
+      showUI();
+      clearTimeout(hideT);
+      pauseInfo.classList.add('on');
+    });
+
+    function skip(s) {
+      if (isLiveStream && s > 0) {
+        const e = getLiveEdge();
+        vid.currentTime = Math.min(e - .5, vid.currentTime + s);
+      } else {
+        vid.currentTime = Math.max(0, Math.min(vid.duration || 0, vid.currentTime + s));
+      }
+      pop(s < 0 ? sfl : sfr);
+      showUI();
+    }
+    rwBtn.addEventListener('click', e => { e.stopPropagation(); skip(-10); });
+    fwBtn.addEventListener('click', e => { e.stopPropagation(); skip(10); });
+
+    function updVol() {
+      vPath.setAttribute('d', (vid.muted || vid.volume === 0) ? P.voff : P.von);
+    }
+    muteBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      vid.muted = !vid.muted;
+      volSlider.value = vid.muted ? 0 : vid.volume * 100;
+      updVol();
+      showToast(vid.muted ? '🔇 Muted' : '🔊 Unmuted');
+    });
+    volSlider.addEventListener('input', e => {
+      e.stopPropagation();
+      vid.volume = e.target.value / 100;
+      vid.muted = vid.volume === 0;
+      updVol();
+    });
+
+    vid.addEventListener('timeupdate', () => {
+      if (isLiveStream) { updateLiveProgress(); return; }
+      if (drag || !vid.duration) return;
+      const p = vid.currentTime / vid.duration;
+      progFill.style.width = (p * 100) + '%';
+      progThumb.style.left = (p * 100) + '%';
+      timeLbl.textContent = fmt(vid.currentTime) + ' / ' + fmt(vid.duration);
+    });
+
+    vid.addEventListener('progress', () => {
+      if (isLiveStream) return;
+      if (!vid.duration || !vid.buffered.length) return;
+      progBuf.style.width = (vid.buffered.end(vid.buffered.length - 1) / vid.duration * 100) + '%';
+    });
+
+    progWrap.addEventListener('mousemove', e => {
+      const r = progTrack.getBoundingClientRect();
+      const p = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+      if (isLiveStream) {
+        const sk = vid.seekable;
+        const dvr = sk && sk.length > 0 ? sk.end(0) - sk.start(0) : 0;
+        if (dvr > 0 && dvr < 86400) {
+          const d = dvr * (1 - p);
+          progTip.textContent = d < LIVE_THRESH ? 'LIVE' : `-${Math.round(d)}s`;
+        } else progTip.textContent = 'LIVE';
+      } else {
+        progTip.textContent = fmt(p * (vid.duration || 0));
+      }
+      progTip.style.left = (p * 100) + '%';
+    });
+
+    progWrap.addEventListener('mousedown', e => {
+      drag = true; seekAt(e);
+      const up = () => {
+        drag = false;
+        document.removeEventListener('mouseup', up);
+        document.removeEventListener('mousemove', seekAt);
+      };
+      document.addEventListener('mousemove', seekAt);
+      document.addEventListener('mouseup', up);
+    });
+
+    function seekAt(e) {
+      const r = progTrack.getBoundingClientRect();
+      const p = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+      if (isLiveStream) {
+        const sk = vid.seekable;
+        if (sk && sk.length > 0) {
+          const dvr = sk.end(0) - sk.start(0);
+          if (dvr < 86400) vid.currentTime = sk.start(0) + p * dvr;
+        }
+      } else {
+        vid.currentTime = p * (vid.duration || 0);
+      }
+      progFill.style.width = (p * 100) + '%';
+      progThumb.style.left = (p * 100) + '%';
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // FULLSCREEN / ROTATE
+    // ══════════════════════════════════════════════════════════
+    fsBtn.addEventListener('click', e => { e.stopPropagation(); toggleFullscreen(); });
+
+    function toggleFullscreen() {
+      const el = player;
+      const isFs = document.fullscreenElement || document.webkitFullscreenElement;
+      if (!isFs) {
+        const req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+        if (req) req.call(el).catch(() => showToast('Fullscreen was blocked'));
+        else showToast('Fullscreen not supported');
+      } else {
+        const exit = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+        if (exit) exit.call(document).catch(() => {});
+      }
+    }
+    document.addEventListener('fullscreenchange', () => fsPath.setAttribute('d', document.fullscreenElement ? P.fsoff : P.fson));
+    document.addEventListener('webkitfullscreenchange', () => fsPath.setAttribute('d', (document.fullscreenElement || document.webkitFullscreenElement) ? P.fsoff : P.fson));
+
+    const ROT_CLASSES = ['rot-90', 'rot-180', 'rot-270'];
+    let _rotDeg = 0;
+
+    function applyRotation() {
+      vid.classList.remove(...ROT_CLASSES);
+      if (_rotDeg) vid.classList.add('rot-' + _rotDeg);
+      rotBtn.classList.toggle('on', _rotDeg !== 0);
+      try {
+        if (screen.orientation && screen.orientation.lock) {
+          if (_rotDeg === 0) screen.orientation.unlock();
+          else if (_rotDeg === 180) screen.orientation.lock('portrait').catch(() => {});
+          else screen.orientation.lock('landscape').catch(() => {});
+        }
+      } catch {}
+    }
+
+    function rotateScreen() {
+      _rotDeg = (_rotDeg + 90) % 360;
+      applyRotation();
+      showUI();
+      showToast(_rotDeg === 0 ? '🔄 Rotation reset' : '🔄 Rotated ' + _rotDeg + '°', 1400);
+    }
+    rotBtn.addEventListener('click', e => { e.stopPropagation(); rotateScreen(); });
+
+    // ══════════════════════════════════════════════════════════
+    // UI VISIBILITY
+    // ══════════════════════════════════════════════════════════
+    vid.addEventListener('waiting', () => spin.classList.add('on'));
+    vid.addEventListener('canplay', () => spin.classList.remove('on'));
+    vid.addEventListener('playing', () => spin.classList.remove('on'));
+
+    function showUI() {
+      player.classList.remove('hide-ui');
+      player.classList.add('show-ui');
+      clearTimeout(hideT);
+    }
+    function schedHide() {
+      clearTimeout(hideT);
+      hideT = setTimeout(() => {
+        if (!vid.paused && !pauseInfo.classList.contains('on')) {
+          player.classList.add('hide-ui');
+          player.classList.remove('show-ui');
+        }
+      }, 3500);
+    }
+    player.addEventListener('mousemove', () => { showUI(); if (!vid.paused) schedHide(); });
+    player.addEventListener('mouseleave', () => { if (!vid.paused) schedHide(); });
+
+    document.addEventListener('keydown', e => {
+      if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+      switch (e.key) {
+        case ' ': case 'k': e.preventDefault(); togglePlay(); break;
+        case 'ArrowLeft': e.preventDefault(); skip(-10); break;
+        case 'ArrowRight': e.preventDefault(); skip(10); break;
+        case 'ArrowUp': e.preventDefault(); vid.volume = Math.min(1, vid.volume + .1); volSlider.value = vid.volume * 100; updVol(); showToast('Vol: ' + Math.round(vid.volume * 100) + '%'); break;
+        case 'ArrowDown': e.preventDefault(); vid.volume = Math.max(0, vid.volume - .1); volSlider.value = vid.volume * 100; updVol(); showToast('Vol: ' + Math.round(vid.volume * 100) + '%'); break;
+        case 'm': case 'M': vid.muted = !vid.muted; volSlider.value = vid.muted ? 0 : vid.volume * 100; updVol(); showToast(vid.muted ? '🔇 Muted' : '🔊 Unmuted'); break;
+        case 'f': case 'F': toggleFullscreen(); break;
+        case 'r': case 'R': rotateScreen(); break;
+        case 'l': case 'L': if (isLiveStream) jumpToLive(); break;
+      }
+      showUI(); if (!vid.paused) schedHide();
+    });
+
+    // ══════════════════════════════════════════════════════════
+    // GO BACK
+    // ══════════════════════════════════════════════════════════
+    function goBack() {
+      showLauncher();
+      vid.pause();
+      isLiveStream = false;
+      liveBadge.style.display = 'none';
+      destroyPlayers();
+    }
+    function showLauncher() {
+      LS.style.display = 'flex';
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // ENTRY
+    // ══════════════════════════════════════════════════════════
+    fetchPlaylist();
+  </script>
+
+  <script async src="https://pl31358401.profitableratecpmnetwork.com/a3/81/41/a38141b4ff99f6ef8dbf9dc5f76bd86b.js"></script>
+</body>
+</html>
