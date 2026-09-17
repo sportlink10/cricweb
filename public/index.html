@@ -425,10 +425,17 @@
     // ══════════════════════════════════════════════════════════
     const PLAYLIST_URL = 'https://raw.githubusercontent.com/srhady/CricketLive/refs/heads/main/playlist.m3u';
 
-    /* The proxy is a Pages Function in the same project, served at
-       /api/live-proxy on the same origin as this page. Nothing to configure
-       and no CORS, because the browser treats it as same-origin. */
-    const IN_PROXY = '/api/live-proxy';
+    /* ── PROXY CONFIG ──────────────────────────────────────────
+     * The proxy is a Cloudflare Worker (sportlink-proxy). It forwards
+     * requests to playerr03.com with the correct Referer/Origin headers
+     * and rewrites HLS playlists so every variant and segment also comes
+     * back through the Worker.
+     *
+     * ⚠ Replace YOUR-SUBDOMAIN below with the subdomain shown in your
+     *   Cloudflare dashboard → Workers & Pages → sportlink-proxy.
+     *   It looks like:  https://sportlink-proxy.abc123.workers.dev
+     * ───────────────────────────────────────────────────────── */
+    const IN_PROXY = 'https://sportlink-proxy.YOUR-SUBDOMAIN.workers.dev';
 
     /* Builds the proxied URL for one playlist entry, forwarding the
        referrer / user-agent the playlist may carry. */
