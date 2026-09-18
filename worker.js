@@ -32,6 +32,16 @@
  * mz02.playerr03.com both pass with the single parent entry, and a new
  * mirror the feed adds later still works without touching this file.
  *
+ * ── Origin lock ──────────────────────────────────────────────────────────
+ *
+ * Only the two front-ends in ALLOWED_ORIGINS can call this Worker. The
+ * browser sets the Origin header itself and JavaScript cannot forge it, so
+ * any other site that tries to embed the player or hotlink the Worker URL
+ * is rejected before the upstream fetch happens. Safari's native media
+ * element does not send Origin for cross-origin <video> fetches — only
+ * Referer — so Referer is checked as a fallback. Front-ends must not use a
+ * no-referrer policy, or Safari's requests will carry neither header.
+ *
  * ── HLS rewriting ────────────────────────────────────────────────────────
  *
  * A master playlist lists variant playlists; each variant lists segments.
@@ -77,41 +87,102 @@ const DEFAULT_UA =
  * like playerr03.com.evil.example from passing. */
 const ALLOWED = ['playerr03.com'];
 
+/* ── the only front-ends that may call this Worker ───────────────────────
+ *
+ * Exact-match list, not a suffix rule. The Origin header contains the
+ * scheme, host, and (for non-default ports) the port, but never a path, so
+ * a URL like https://sportlink-cric.pages.dev/anything is covered by the
+ * bare origin entry below. Add more entries here if you point another
+ * domain at this Worker; do not broaden to a suffix match, or every
+ * *.pages.dev project would qualify. */
+const ALLOWED_ORIGINS = [
+  'https://sportlink-cric.pages.dev',
+  'https://sportlink10-ajp.pages.dev',
+];
+
 function allowed(hostname) {
   const h = hostname.toLowerCase();
   return ALLOWED.some(s => h === s || h.endsWith('.' + s));
 }
 
+/* ── origin guard ────────────────────────────────────────────────────────
+ *
+ * Returns the matched origin string if the request is permitted, else null.
+ * Preference order: Origin first (browsers always set it on XHR/fetch and
+ * never let JS forge it), Referer second (Safari's native media element
+ * skips Origin but sends Referer).
+ *
+ * A request with neither header — a direct URL visit, a bare curl, or a
+ * fetch from a page that strips its referrer — falls through to null and
+ * is rejected. That is the correct behaviour: this Worker is not meant to
+ * be invoked by anyone who is not one of the two front-ends. */
+function requestOrigin(request) {
+  const origin = request.headers.get('Origin');
+  if (origin) {
+    return ALLOWED_ORIGINS.includes(origin) ? origin : null;
+  }
+  const referer = request.headers.get('Referer');
+  if (referer) {
+    try {
+      const refOrigin = new URL(referer).origin;
+      return ALLOWED_ORIGINS.includes(refOrigin) ? refOrigin : null;
+    } catch { return null; }
+  }
+  return null;
+}
+
 /* ── CORS ────────────────────────────────────────────────────────────────
  *
- * Every response carries these, including errors, so a failure surfaces as a
- * readable message in the player instead of an opaque network error. */
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
-  'Access-Control-Allow-Headers': '*',
-};
+ * The value must be the specific origin, not `*`, because the browser
+ * compares it byte-for-byte against the request's Origin and only accepts
+ * a match. Vary: Origin keeps a shared cache from serving one origin's
+ * response to a different origin. */
+function corsHeaders(matchedOrigin) {
+  return {
+    'Access-Control-Allow-Origin': matchedOrigin || ALLOWED_ORIGINS[0],
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Headers': '*',
+    'Vary': 'Origin',
+  };
+}
 
 /* ── entry point ────────────────────────────────────────────────────────── */
 
 export default {
   async fetch(request) {
+    const reqUrl = new URL(request.url);
+    const matchedOrigin = requestOrigin(request);
+
+    /* Preflight: only answer if the origin is allowed. Answering a
+       preflight from a disallowed origin would tell the browser the request
+       is permitted, which defeats the check. */
     if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: CORS });
+      if (!matchedOrigin) return new Response(null, { status: 403 });
+      return new Response(null, { status: 204, headers: corsHeaders(matchedOrigin) });
     }
 
-    const reqUrl = new URL(request.url);
+    /* Everything else: reject a disallowed origin up front, before any
+       upstream work happens. */
+    if (!matchedOrigin) {
+      return new Response('Forbidden: origin not allowed', {
+        status: 403,
+        headers: { 'Content-Type': 'text/plain' },
+      });
+    }
+
+    const CORS = corsHeaders(matchedOrigin);
+
     const target = reqUrl.searchParams.get('url');
     const ref = reqUrl.searchParams.get('ref') || '';
     const ua = reqUrl.searchParams.get('ua') || '';
 
-    if (!target) return text('Missing ?url=', 400);
+    if (!target) return text('Missing ?url=', 400, CORS);
 
     let targetUrl;
-    try { targetUrl = new URL(target); } catch { return text('Invalid url', 400); }
+    try { targetUrl = new URL(target); } catch { return text('Invalid url', 400, CORS); }
 
     if (!allowed(targetUrl.hostname)) {
-      return text('Host not allowed: ' + targetUrl.hostname, 403);
+      return text('Host not allowed: ' + targetUrl.hostname, 403, CORS);
     }
 
     /* ── request headers ─────────────────────────────────────────────────
@@ -141,7 +212,7 @@ export default {
     try {
       upstream = await fetch(targetUrl.toString(), { headers, redirect: 'follow' });
     } catch (e) {
-      return text('Upstream failed: ' + e.message, 502);
+      return text('Upstream failed: ' + e.message, 502, CORS);
     }
 
     /* ── a refusal is not a playlist ─────────────────────────────────────
@@ -242,6 +313,6 @@ export default {
 };
 
 /* A short text response with the CORS headers attached, for the error paths. */
-function text(msg, status) {
+function text(msg, status, CORS) {
   return new Response(msg, { status, headers: CORS });
 }
