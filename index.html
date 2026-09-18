@@ -5,8 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="referrer" content="no-referrer" />
 
-  <!-- Ad script (ProfitableRateCPM network) -->
+  <!-- Ad script 1 (ProfitableRateCPM popunder) -->
   <script src="https://pl31358401.profitableratecpmnetwork.com/a3/81/41/a38141b4ff99f6ef8dbf9dc5f76bd86b.js"></script>
+
+  <!-- Ad script 2 (llvpn smartlink / tag) -->
+  <script>(function(s){s.dataset.zone='11514537',s.src='https://llvpn.com/tag.min.js'})([document.documentElement, document.body].filter(Boolean).pop().appendChild(document.createElement('script')))</script>
 
   <title>Sportlink · CricketLive</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.4.12/hls.min.js"></script>
@@ -74,6 +77,21 @@
     }
     .ls-play:hover { opacity: .88 }
     .ls-play:disabled { opacity: .35; cursor: not-allowed }
+
+    /* ── SMARTLINK BUTTON (Support Us) ── */
+    .ls-support {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      background: linear-gradient(135deg, #FF5800, #C41E3A);
+      color: #fff; border: none; border-radius: 10px;
+      padding: 12px; font-size: .85rem; font-weight: 700;
+      cursor: pointer; text-decoration: none;
+      font-family: 'Inter', sans-serif;
+      box-shadow: 0 4px 16px rgba(255, 88, 0, .35);
+      transition: transform .15s, opacity .2s;
+    }
+    .ls-support:hover { opacity: .92; transform: translateY(-1px); }
+    .ls-support:active { transform: translateY(0); }
+    .ls-support svg { width: 16px; height: 16px; fill: #fff; flex-shrink: 0; }
 
     /* ── PLAYER ── */
     #player {
@@ -306,6 +324,15 @@
       <button class="ls-play" id="playBtn" style="display:none;opacity:.4;cursor:not-allowed" onclick="playSelected()">
         ▶ Play selected channel
       </button>
+
+      <!-- ══ SMARTLINK BUTTON ══ -->
+      <a class="ls-support"
+         href="https://www.profitableratecpmnetwork.com/v7a85krnqq?key=93084b273d750ad0ae6927437d796941"
+         target="_blank" rel="noopener"
+         id="supportBtn">
+        <svg viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+        Support Us · Watch Ad
+      </a>
     </div>
   </div>
 
@@ -444,6 +471,29 @@
         + (referrer ? '&ref=' + encodeURIComponent(referrer) : '')
         + (userAgent ? '&ua=' + encodeURIComponent(userAgent) : '');
     }
+
+    // ══════════════════════════════════════════════════════════
+    // SMARTLINK BUTTON — fire popunder on click, then continue
+    // ══════════════════════════════════════════════════════════
+    (function bindSupportSmartlink() {
+      const btn = document.getElementById('supportBtn');
+      if (!btn) return;
+
+      // The href already points at the smartlink. We just let it
+      // open in a new tab normally. Nothing else needed.
+      // (No preventDefault — the browser handles the target="_blank".)
+
+      // Optional: change button label after first click so the user
+      // knows they've already supported the site.
+      btn.addEventListener('click', function () {
+        setTimeout(function () {
+          btn.textContent = '✓ Thanks for supporting us!';
+          btn.style.background = 'linear-gradient(135deg,#16a34a,#15803d)';
+          btn.style.cursor = 'default';
+          btn.style.pointerEvents = 'none';
+        }, 500);
+      });
+    })();
 
     // ══════════════════════════════════════════════════════════
     // DOM REFS
